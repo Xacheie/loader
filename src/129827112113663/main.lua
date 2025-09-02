@@ -3408,6 +3408,11 @@ function ConfirmationPrompt.show(config)
 	local Players = game:GetService("Players")
 	local player = Players.LocalPlayer
 	local playerGui = player:WaitForChild("PlayerGui")
+
+	if playerGui:FindFirstChild("ConfirmationPrompt") then
+		return
+	end
+
 	local item = config.item or "Item"
 	local price = config.price or "$0"
 	local title = config.title or "Confirm Purchase"
@@ -3422,12 +3427,13 @@ function ConfirmationPrompt.show(config)
 	gui.Name = "ConfirmationPrompt"
 	gui.DisplayOrder = 999
 	gui.Parent = playerGui
-
-	-- Create overlay as a regular Frame (no click detection)
+	gui.IgnoreGuiInset = true
 	local overlay = Instance.new("Frame")
 	overlay.Size = UDim2.new(1, 0, 1, 0)
 	overlay.BackgroundColor3 = Color3.new(0, 0, 0)
 	overlay.BackgroundTransparency = 0.6
+	overlay.Active = true
+	overlay.Selectable = true
 	overlay.BorderSizePixel = 0
 	overlay.Parent = gui
 	local dialog = Instance.new("Frame")
@@ -3436,21 +3442,12 @@ function ConfirmationPrompt.show(config)
 	dialog.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
 	dialog.BorderSizePixel = 0
 	dialog.Parent = overlay
-	local shadow = Instance.new("Frame")
-	shadow.Size = UDim2.new(1, 20, 1, 20)
-	shadow.Position = UDim2.new(0, -10, 0, -10)
-	shadow.BackgroundColor3 = Color3.new(0, 0, 0)
-	shadow.BackgroundTransparency = 0.7
-	shadow.BorderSizePixel = 0
-	shadow.ZIndex = dialog.ZIndex - 1
-	shadow.Parent = overlay
 	local function corner(obj, r)
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(0, r)
 		c.Parent = obj
 	end
 	corner(dialog, 16)
-	corner(shadow, 16)
 	local header = Instance.new("Frame")
 	header.Size = UDim2.new(1, 0, 0, 70)
 	header.BackgroundColor3 = Color3.fromRGB(35, 35, 42)
