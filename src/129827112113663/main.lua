@@ -519,11 +519,13 @@ local function createNotification(msg, duration)
 	end)
 end
 
+local viewportHeight = workspace.CurrentCamera.ViewportSize.Y
+
 local mainContainer = createElement("Frame", {
 	Name = "MainContainer",
 	AnchorPoint = Vector2.new(1, 0),
 	Position = UDim2.new(1, -20, 0, 100),
-	Size = UDim2.new(0, 400, 0, 40),
+	Size = UDim2.new(0, 400, 0, viewportHeight * 0.8),
 	BackgroundTransparency = 1,
 	ClipsDescendants = false,
 	Parent = gui
@@ -591,7 +593,7 @@ local function createCollapsibleContainer(parent, maxHeight)
 	})
 	local contentFrame = createElement("ScrollingFrame", {
 		Size = UDim2.new(1, -20, 0, 0),
-		Position = UDim2.new(0, 10, 0, 45),
+		Position = UDim2.new(0, 10, 0, 40),
 		BackgroundTransparency = 1,
 		BorderSizePixel = 0,
 		ScrollBarThickness = 0,
@@ -624,20 +626,22 @@ local function createCollapsibleContainer(parent, maxHeight)
 	local releaseConnection = nil
 	local UserInputService = game:GetService("UserInputService")
 	local function startDrag(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
 			isDragging = true
 			dragStart = Vector2.new(input.Position.X, input.Position.Y)
 			startPos = parent.Position
-			dragConnection = UserInputService.InputChanged:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseMovement and isDragging then
-					local currentPos = Vector2.new(input.Position.X, input.Position.Y)
+			dragConnection = UserInputService.InputChanged:Connect(function(inputChanged)
+				if (inputChanged.UserInputType == Enum.UserInputType.MouseMovement or inputChanged.UserInputType == Enum.UserInputType.Touch) and isDragging then
+					local currentPos = Vector2.new(inputChanged.Position.X, inputChanged.Position.Y)
 					local delta = currentPos - dragStart
 					parent.Position = UDim2.new(
-						startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+						startPos.X.Scale, startPos.X.Offset + delta.X,
+						startPos.Y.Scale, startPos.Y.Offset + delta.Y
+					)
 				end
 			end)
-			releaseConnection = UserInputService.InputEnded:Connect(function(input)
-				if input.UserInputType == Enum.UserInputType.MouseButton1 then
+			releaseConnection = UserInputService.InputEnded:Connect(function(inputEnded)
+				if inputEnded.UserInputType == Enum.UserInputType.MouseButton1 or inputEnded.UserInputType == Enum.UserInputType.Touch then
 					isDragging = false
 					if dragConnection then
 						dragConnection:Disconnect()
@@ -656,7 +660,6 @@ local function createCollapsibleContainer(parent, maxHeight)
 		local baseHeight = list.AbsoluteContentSize.Y + 15
 		local extra = 0
 
-		-- Check for dropdown overflows (these still need to be handled)
 		for _, d in ipairs(contentFrame:GetDescendants()) do
 			if d:IsA("Frame") and d.Name == "OptionsMenu" and d.Visible then
 				local menuBottom = d.AbsolutePosition.Y + d.AbsoluteSize.Y
@@ -667,7 +670,7 @@ local function createCollapsibleContainer(parent, maxHeight)
 				end
 			end
 		end
-		local totalContentHeight = baseHeight + extra
+		local totalContentHeight = baseHeight
 		local needsScrolling = totalContentHeight > maxHeight
 		local displayHeight = needsScrolling and maxHeight or totalContentHeight
 		local contentHeight = isExpanded and displayHeight or 0
@@ -688,8 +691,7 @@ local function createCollapsibleContainer(parent, maxHeight)
 			createNotification("Container height reduced, scrolling disabled", 5)
 		end
 		wasScrolling = needsScrolling
-		local frameWidth = needsScrolling and -21 or -20
-		contentFrame.Size = UDim2.new(1, frameWidth, 0, contentH)
+		contentFrame.Size = UDim2.new(1, -20, 0, contentH)
 		local info = TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 		if immediate then
 			container.Size = UDim2.new(1, 0, 0, containerH)
@@ -703,6 +705,7 @@ local function createCollapsibleContainer(parent, maxHeight)
 			}):Play()
 		end
 	end
+
 	local function hookOptionsMenu(m)
 		if not (m and m:IsA("Frame") and m.Name == "OptionsMenu") then
 			return
@@ -718,15 +721,19 @@ local function createCollapsibleContainer(parent, maxHeight)
 			end
 		end)
 	end
+
 	for _, d in ipairs(contentFrame:GetDescendants()) do
 		hookOptionsMenu(d)
 	end
+
 	contentFrame.ChildAdded:Connect(function()
 		applyHeights(true)
 	end)
+
 	contentFrame.ChildRemoved:Connect(function()
 		applyHeights(true)
 	end)
+
 	contentFrame.DescendantAdded:Connect(function(d)
 		if d.Name == "OptionsMenu" then
 			hookOptionsMenu(d)
@@ -735,11 +742,13 @@ local function createCollapsibleContainer(parent, maxHeight)
 			applyHeights(true)
 		end
 	end)
+
 	list:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 		if isExpanded then
 			applyHeights(false)
 		end
 	end)
+
 	local function toggleContainer()
 		if isAnimating then
 			return
@@ -751,10 +760,10 @@ local function createCollapsibleContainer(parent, maxHeight)
 		}):Play()
 		applyHeights(false)
 		task.delay(0.5, function()
-			contentFrame.ClipsDescendants = not isExpanded or not contentFrame.ScrollingEnabled
 			isAnimating = false
 		end)
 	end
+
 	toggleBtn.MouseButton1Click:Connect(toggleContainer)
 	applyHeights(true)
 	return contentFrame, container
@@ -1513,7 +1522,7 @@ local PanStatus = {
 local AutoFarmState = {
 	active = false,
 	actionMode = "Instant",
-	travelMode = "Tween",
+	travelMode = "Walk",
 	sandCFrame = nil,
 	waterCFrame = nil
 }
@@ -1978,12 +1987,11 @@ local function walkToTarget(target, config)
 	config = config or {}
 	local defaults = {
 		Speed = 16,
-		StopDistance = 6,
+		StopDistance = 3,
 		AgentRadius = 3.5,
 		AgentHeight = 4,
 		AgentCanJump = true,
 		AgentCanClimb = true,
-		MaxWaypointWait = 30,
 		VisualizePath = false,
 		RRTStepSize = 8,
 		RRTSearchRadius = 50,
@@ -1996,9 +2004,9 @@ local function walkToTarget(target, config)
 		FieldStepSize = 4,
 		MaxStuckAttempts = 12,
 		TierTimeouts = {
-			25,
-			20,
-			30
+			12,
+			15,
+			18
 		},
 		MaxRRTNodes = 2000,
 		RRTBias = 0.8,
@@ -2030,14 +2038,200 @@ local function walkToTarget(target, config)
 	local raycastCache = {}
 	local cacheKeys = {}
 	local pathCache = {}
+
 	local globalState = {
 		currentTier = 1,
 		totalStuckAttempts = 0,
 		emergencyRetries = 0,
-		lastKnownGoodPosition = nil,
+		lastKnownGoodPosition = hrp.Position,
 		pathfindingActive = true,
-		endPosition = finalTarget
+		endPosition = finalTarget,
+		tierPerformance = {
+			[1] = { successes = 0, failures = 0, totalTime = 0, attempts = 0, avgTime = 0, successRate = 0 },
+			[2] = { successes = 0, failures = 0, totalTime = 0, attempts = 0, avgTime = 0, successRate = 0 },
+			[3] = { successes = 0, failures = 0, totalTime = 0, attempts = 0, avgTime = 0, successRate = 0 }
+		},
+		pathComplexity = 0,
+		terrainDifficulty = 0,
+		currentAttemptStartTime = 0,
+		adaptiveLearning = true,
+		lastPositionUpdate = 0
 	}
+
+	local function analyzeTerrainComplexity(startPos, targetPos)
+		local complexity = 0
+		local difficulty = 0
+		local distance = (targetPos - startPos).Magnitude
+		local samples = math.min(12, math.max(6, math.floor(distance / 10)))
+
+		local rayParams = RaycastParams.new()
+		rayParams.FilterType = Enum.RaycastFilterType.Blacklist
+		rayParams.FilterDescendantsInstances = { character }
+
+		local lastHeight = startPos.Y
+		local heightVariations = 0
+		local obstacleCount = 0
+
+		for i = 1, samples do
+			local t = i / samples
+			local samplePos = startPos:Lerp(targetPos, t)
+
+			local groundHit = workspace:Raycast(samplePos + Vector3.new(0, 50, 0), Vector3.new(0, -100, 0), rayParams)
+			if groundHit then
+				local currentHeight = groundHit.Position.Y
+				local heightDiff = math.abs(currentHeight - lastHeight)
+				heightVariations = heightVariations + heightDiff
+				lastHeight = currentHeight
+
+				local obstacleHit = workspace:Raycast(samplePos + Vector3.new(0, 3, 0),
+					(targetPos - samplePos).Unit * 5, rayParams)
+				if obstacleHit then
+					obstacleCount = obstacleCount + 1
+				end
+			end
+		end
+
+		complexity = math.min(10, (heightVariations / 20) + (obstacleCount / samples * 5) + (distance / 50))
+
+		local directHit = workspace:Raycast(startPos + Vector3.new(0, 3, 0),
+			(targetPos - startPos), rayParams)
+		if directHit then
+			difficulty = math.min(10, complexity + 3)
+		else
+			difficulty = complexity
+		end
+
+		return complexity, difficulty
+	end
+
+	local function selectOptimalTier(startPos, targetPos)
+		local complexity, difficulty = analyzeTerrainComplexity(startPos, targetPos)
+		globalState.pathComplexity = complexity
+		globalState.terrainDifficulty = difficulty
+
+		local distance = (targetPos - startPos).Magnitude
+		local performance = globalState.tierPerformance
+
+		print(string.format("Terrain Analysis - Complexity: %.1f, Difficulty: %.1f, Distance: %.1f", complexity,
+			difficulty, distance))
+
+		if complexity <= 3 and difficulty <= 3 and distance <= 100 then
+			if performance[1].successRate >= 0.7 or performance[1].attempts == 0 then
+				print("Selected Tier 1 (PathfindingService) - Easy terrain")
+				return 1
+			end
+		end
+
+		if complexity <= 6 and difficulty <= 6 then
+			local bestTier = 1
+			local bestScore = -1
+
+			for tier = 1, 3 do
+				local perf = performance[tier]
+				local score = 0
+
+				if perf.attempts > 0 then
+					score = perf.successRate - (perf.avgTime / 30)
+				else
+					score = tier == 1 and 0.8 or tier == 2 and 0.6 or 0.4
+				end
+
+				if score > bestScore then
+					bestScore = score
+					bestTier = tier
+				end
+			end
+
+			print(string.format("Selected Tier %d (Performance-based) - Medium terrain", bestTier))
+			return bestTier
+		end
+
+		if complexity > 6 or difficulty > 6 then
+			if performance[2].successRate >= 0.6 or performance[2].attempts == 0 then
+				print("Selected Tier 2 (RRT*) - Complex terrain")
+				return 2
+			end
+			print("Selected Tier 3 (Potential Field) - Very complex terrain")
+			return 3
+		end
+
+		return 1
+	end
+
+	-- PERFORMANCE TRACKING WHICH TOTALLY MEANS SOMETHING
+	local function updateTierPerformance(tier, success, timeSpent)
+		local perf = globalState.tierPerformance[tier]
+		perf.attempts = perf.attempts + 1
+		perf.totalTime = perf.totalTime + timeSpent
+
+		if success then
+			perf.successes = perf.successes + 1
+		else
+			perf.failures = perf.failures + 1
+		end
+
+		perf.avgTime = perf.totalTime / perf.attempts
+		perf.successRate = perf.successes / perf.attempts
+
+		print(string.format("Tier %d Performance: %.1f%% success, %.1fs avg time, %d attempts",
+			tier, perf.successRate * 100, perf.avgTime, perf.attempts))
+	end
+
+	local function shouldSwitchTier()
+		local currentTime = tick()
+		local elapsedTime = currentTime - globalState.currentAttemptStartTime
+		local currentTier = globalState.currentTier
+		local timeout = config.TierTimeouts[currentTier] or 15
+
+		if elapsedTime > timeout * 0.8 then
+			print("Switching tier due to timeout approaching")
+			return true
+		end
+
+		if globalState.totalStuckAttempts > 6 then
+			print("Switching tier due to being stuck")
+			return true
+		end
+
+		local perf = globalState.tierPerformance[currentTier]
+		if perf.attempts >= 3 and perf.successRate < 0.3 then
+			print("Switching tier due to poor performance")
+			return true
+		end
+
+		return false
+	end
+
+	local function getNextBestTier()
+		local currentTier = globalState.currentTier
+		local performance = globalState.tierPerformance
+		local complexity = globalState.pathComplexity
+		local alternatives = {}
+		for tier = 1, 3 do
+			if tier ~= currentTier then
+				local perf = performance[tier]
+				local score = 0
+
+				if perf.attempts > 0 then
+					score = perf.successRate * 100 - perf.avgTime
+				else
+					if complexity <= 3 then
+						score = tier == 1 and 90 or tier == 2 and 70 or 50
+					elseif complexity <= 6 then
+						score = tier == 2 and 85 or tier == 1 and 75 or tier == 3 and 65
+					else
+						score = tier == 3 and 80 or tier == 2 and 75 or 60
+					end
+				end
+
+				table.insert(alternatives, { tier = tier, score = score })
+			end
+		end
+
+		table.sort(alternatives, function(a, b) return a.score > b.score end)
+		return alternatives[1] and alternatives[1].tier or (currentTier % 3) + 1
+	end
+
 	local movementMonitor = {
 		positions = {},
 		velocities = {},
@@ -2191,7 +2385,9 @@ local function walkToTarget(target, config)
 		movementMonitor.positions = {}
 		movementMonitor.velocities = {}
 	end
+
 	local movementConnection = RunService.Heartbeat:Connect(updateMovementMonitor)
+
 	local function advancedPathSmoothing(path, radius)
 		if # path <= 2 then
 			return path
@@ -2632,14 +2828,23 @@ local function walkToTarget(target, config)
 		end
 		return advancedPathSmoothing(path, config.SmoothingRadius)
 	end
+
 	local function getPathToTarget()
 		local startPos = hrp.Position
 		local cacheKey = hashPosition(startPos, 2) .. "_" .. hashPosition(finalTarget, 2)
+
 		if pathCache[cacheKey] and tick() - pathCache[cacheKey].time < config.CacheExpireTime then
 			return pathCache[cacheKey].path
 		end
-		local path
-		if globalState.currentTier == 1 then
+
+		globalState.currentAttemptStartTime = tick()
+		local currentTier = globalState.currentTier
+		local path = nil
+
+		print(string.format("Attempting pathfinding with Tier %d", currentTier))
+
+		if currentTier == 1 then
+			-- Roblox PathfindingService
 			local success, result = pcall(function()
 				local pathObj = PathfindingService:CreatePath({
 					AgentRadius = config.AgentRadius,
@@ -2653,17 +2858,13 @@ local function walkToTarget(target, config)
 					local points = {}
 					local rayParams = RaycastParams.new()
 					rayParams.FilterType = Enum.RaycastFilterType.Blacklist
-					rayParams.FilterDescendantsInstances = {
-						character
-					}
+					rayParams.FilterDescendantsInstances = { character }
+
 					for i, wp in ipairs(waypoints) do
 						local pos = wp.Position
-
-						-- only validate some waypoints (first, last, and every ~3rd)
-						if i == 1 or i == # waypoints or i % 3 == 0 then
+						if i == 1 or i == #waypoints or i % 3 == 0 then
 							local down = workspace:Raycast(pos + Vector3.new(0, 5, 0), Vector3.new(0, -10, 0), rayParams)
 							if not down then
-								-- nudge up if inside geometry
 								pos = pos + Vector3.new(0, config.AgentHeight * 0.5, 0)
 							end
 						end
@@ -2676,33 +2877,37 @@ local function walkToTarget(target, config)
 			if success and result then
 				path = result
 			end
-		end
-		if not path and globalState.currentTier <= 2 then
+		elseif currentTier == 2 then
+			-- RRT* Algorithm | VERY weak
 			path = createAdvancedRRTStar(startPos, finalTarget, character, config)
-		end
-		if not path and globalState.currentTier <= 3 then
+		elseif currentTier == 3 then
+			-- Potential Field Method
 			path = createEnhancedPotentialField(startPos, finalTarget, character, config)
 		end
-		if path and # path > 0 then
+
+		if path and #path > 0 then
 			pathCache[cacheKey] = {
 				path = path,
 				time = tick()
 			}
+
 			local cacheKeys = {}
 			for k in pairs(pathCache) do
 				table.insert(cacheKeys, k)
 			end
-			if # cacheKeys > config.CacheSize then
+			if #cacheKeys > config.CacheSize then
 				table.sort(cacheKeys, function(a, b)
 					return pathCache[a].time < pathCache[b].time
 				end)
-				for i = 1, # cacheKeys - config.CacheSize do
+				for i = 1, #cacheKeys - config.CacheSize do
 					pathCache[cacheKeys[i]] = nil
 				end
 			end
 		end
+
 		return path
 	end
+
 	local function visualizePath(path)
 		local SYSTEM_CONFIG = {
 			SPLINE_RESOLUTION = 16,
@@ -2860,6 +3065,7 @@ local function walkToTarget(target, config)
 		createPathTerminal(path[# path], false)
 		table.insert(pathVisuals, pathNetwork)
 	end
+
 	local function moveAlongPath(path)
 		if not path or # path == 0 then
 			return false
@@ -2893,91 +3099,214 @@ local function walkToTarget(target, config)
 		movementMonitor.waypointStartTime = tick()
 		movementMonitor.currentWaypoint = path[1]
 		local currentWaypointIndex = 1
-		while currentWaypointIndex <= # path and globalState.pathfindingActive do
+
+		while currentWaypointIndex <= #path and globalState.pathfindingActive do
 			local waypoint = path[currentWaypointIndex]
 			movementMonitor.currentWaypoint = waypoint
+
 			if (hrp.Position - finalTarget).Magnitude <= config.StopDistance then
 				humanoid:MoveTo(hrp.Position)
 				movementMonitor.isActive = false
 				return true
 			end
+
+			if currentWaypointIndex > 1 and currentWaypointIndex % 4 == 0 then
+				local directDistance = (hrp.Position - finalTarget).Magnitude
+				local pathDistance = 0
+				for i = currentWaypointIndex, #path - 1 do
+					pathDistance = pathDistance + (path[i + 1] - path[i]).Magnitude
+				end
+
+				if directDistance < pathDistance * 0.65 then
+					print("Found potentially better path, re-calculating...")
+					return false
+				end
+			end
+
 			humanoid:MoveTo(waypoint)
-			local waypointTimeout = config.TierTimeouts[globalState.currentTier] or 30
+
+			local waypointTimeout = config.TierTimeouts[globalState.currentTier] or 15
 			local startTime = tick()
-			while (hrp.Position - waypoint).Magnitude > config.StopDistance and globalState.pathfindingActive do
-				if tick() - startTime > waypointTimeout then
+			local lastDistanceCheck = (hrp.Position - waypoint).Magnitude
+			local stuckCounter = 0
+
+			while (hrp.Position - waypoint).Magnitude > 4 and globalState.pathfindingActive do
+				local elapsed = tick() - startTime
+
+				if elapsed > waypointTimeout then
+					print("Waypoint timeout, switching tiers")
 					break
 				end
+
+				if shouldSwitchTier() then
+					print("Switching tier due to performance issues")
+					movementMonitor.isActive = false
+					return false
+				end
+
+				-- Progress monitoring
+				local currentDistance = (hrp.Position - waypoint).Magnitude
+				if math.abs(currentDistance - lastDistanceCheck) < 0.3 then
+					stuckCounter = stuckCounter + 1
+					if stuckCounter > 8 then
+						print("No progress on waypoint, re-evaluating path")
+						return false
+					end
+				else
+					stuckCounter = 0
+				end
+				lastDistanceCheck = currentDistance
+
+				-- Distance to target check - skip waypoint if we're close enough
+				local distToTarget = (hrp.Position - finalTarget).Magnitude
+				local waypointDistToTarget = (waypoint - finalTarget).Magnitude
+				if distToTarget < waypointDistToTarget and distToTarget < 12 then
+					print("Skipping waypoint - closer to target")
+					break
+				end
+
 				if isStuckAdvanced() then
 					executeJump("stuck")
 					task.wait(0.5)
 				end
+
 				if shouldJumpToWaypoint() then
 					executeJump("waypoint")
 					task.wait(0.3)
 				end
+
 				task.wait(config.CheckFrequency)
 			end
+
 			currentWaypointIndex = currentWaypointIndex + 1
-			if currentWaypointIndex <= # path then
+			if currentWaypointIndex <= #path then
 				task.wait(0.1)
 			end
 		end
+
 		movementMonitor.isActive = false
-		return currentWaypointIndex > # path
+		return currentWaypointIndex > #path
 	end
+
 	local function checkPositionMatch()
-		return (globalState.endPosition - finalTarget).Magnitude <= config.PositionCheckRadius
+		return (globalState.endPosition - finalTarget).Magnitude <= 2
 	end
+
 	local function mainNavigationLoop()
 		local retries = 0
-		while (hrp.Position - finalTarget).Magnitude > config.StopDistance and retries < config.MaxRetries and globalState.pathfindingActive do
-			if not checkPositionMatch() then
-				globalState.endPosition = finalTarget
-				globalState.currentTier = 1
-				retries = 0
-			end
-			local path = getPathToTarget()
-			if not path or # path == 0 then
-				globalState.currentTier = globalState.currentTier + 1
-				if globalState.currentTier > 3 then
-					globalState.currentTier = 1
-					retries = retries + 1
-				end
-				task.wait(1)
+		local maxRetries = config.MaxRetries
+
+		globalState.currentTier = selectOptimalTier(hrp.Position, finalTarget)
+		print(string.format("Starting with optimal Tier %d", globalState.currentTier))
+
+		while (hrp.Position - finalTarget).Magnitude > config.StopDistance and retries < maxRetries and globalState.pathfindingActive do
+			-- Position deviation check
+			local expectedPosition = globalState.lastKnownGoodPosition or hrp.Position
+			local currentPosition = hrp.Position
+
+			if globalState.lastKnownGoodPosition and (currentPosition - expectedPosition).Magnitude > 8 then
+				print("Position deviation detected, re-pathfinding...")
+				globalState.currentTier = selectOptimalTier(currentPosition, finalTarget)
+				globalState.lastKnownGoodPosition = currentPosition
+				pathCache = {} -- Clear cache
+				task.wait(0.2)
 				continue
 			end
+
+			if not globalState.lastKnownGoodPosition or tick() - (globalState.lastPositionUpdate or 0) > 2 then
+				globalState.lastKnownGoodPosition = currentPosition
+				globalState.lastPositionUpdate = tick()
+			end
+
+			if not checkPositionMatch() then
+				globalState.endPosition = finalTarget
+				globalState.currentTier = selectOptimalTier(currentPosition, finalTarget)
+				retries = 0
+				pathCache = {}
+				print("Target changed, recalculating optimal approach")
+			end
+
+			local attemptStartTime = tick()
+			local path = getPathToTarget()
+
+			if not path or #path == 0 then
+				print(string.format("Tier %d failed to generate path", globalState.currentTier))
+				updateTierPerformance(globalState.currentTier, false, tick() - attemptStartTime)
+				globalState.currentTier = getNextBestTier()
+				retries = retries + 1
+				task.wait(0.5)
+				continue
+			end
+
 			visualizePath(path)
 			local success = moveAlongPath(path)
+			local attemptTime = tick() - attemptStartTime
+
+			updateTierPerformance(globalState.currentTier, success, attemptTime)
+
 			if success then
+				print(string.format("Successfully reached target using Tier %d in %.1fs", globalState.currentTier,
+					attemptTime))
 				break
 			else
-				globalState.currentTier = globalState.currentTier + 1
-				if globalState.currentTier > 3 then
-					globalState.currentTier = 1
-					retries = retries + 1
+				print(string.format("Tier %d movement failed after %.1fs", globalState.currentTier, attemptTime))
+
+				if globalState.totalStuckAttempts > 8 then
+					globalState.currentTier = 3
+					globalState.totalStuckAttempts = 0
+				else
+					globalState.currentTier = getNextBestTier()
 				end
-				if globalState.totalStuckAttempts > config.MaxStuckAttempts * 2 then
+
+				retries = retries + 1
+
+				if retries >= 2 then
+					print("Multiple failures, applying emergency measures...")
 					globalState.emergencyRetries = globalState.emergencyRetries + 1
-					if globalState.emergencyRetries > 2 then
+
+					if globalState.emergencyRetries <= 2 then
+						-- Emergency jump and position reset
 						humanoid.Jump = true
 						task.wait(0.5)
-						humanoid:MoveTo(hrp.Position + Vector3.new(5, 0, 0))
+						local escapeDir = (finalTarget - hrp.Position).Unit
+						local escapePos = hrp.Position + escapeDir * 5 + Vector3.new(
+							(math.random() - 0.5) * 8, 0, (math.random() - 0.5) * 8)
+						humanoid:MoveTo(escapePos)
 						task.wait(1)
 					end
+
+					pathCache = {}
+					raycastCache = {}
 				end
 			end
-			task.wait(0.5)
+
+			task.wait(0.3)
 		end
+
 		movementConnection:Disconnect()
 		for _, part in ipairs(pathVisuals) do
 			if part and part.Parent then
 				part:Destroy()
 			end
 		end
-		print(((hrp.Position - finalTarget).Magnitude <= config.StopDistance))
-		return config.OnComplete((hrp.Position - finalTarget).Magnitude <= config.StopDistance)
+
+		local finalDistance = (hrp.Position - finalTarget).Magnitude
+		local finalSuccess = finalDistance <= config.StopDistance
+
+		print(string.format("Navigation complete. Final distance: %.1f, Success: %s", finalDistance,
+			tostring(finalSuccess)))
+		print("Tier Performance Summary:")
+		for tier = 1, 3 do
+			local perf = globalState.tierPerformance[tier]
+			if perf.attempts > 0 then
+				print(string.format("  Tier %d: %.1f%% success rate, %.1fs average time, %d attempts",
+					tier, perf.successRate * 100, perf.avgTime, perf.attempts))
+			end
+		end
+
+		return config.OnComplete and config.OnComplete(finalSuccess) or finalSuccess
 	end
+
 	return mainNavigationLoop()
 end
 
@@ -3775,7 +4104,7 @@ createToggleButton("AutoFarmToggle", "Auto Farm", false, function(state)
 					local success = false
 					local config = {
 						Offset = Vector3.new(0, 5, 0),
-						StopDistance = 2,
+						StopDistance = 5,
 						OnComplete = function(moveSuccess)
 							success = moveSuccess or false
 							completed = true

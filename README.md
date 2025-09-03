@@ -61,7 +61,6 @@ Slap the code into your executor and just run it
 
 # Known Bugs / Missing Elements
 - Legit mode for the auto farm + manual actions is missing.
-- Lacking 'Scrollable' and 'Draging' support on mobile devices
 
 
 ---

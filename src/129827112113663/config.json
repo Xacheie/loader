@@ -1,8 +1,8 @@
 {
   "name": "Prospecting!",
-  "version": "0.1.0-alpha",
+  "version": "0.1.1-alpha",
   "description": "Automates various tasks in the game Prospecting!",
   "author": "Xacheie",
-  "last_updated": "2025-09-02",
+  "last_updated": "2025-09-03",
   "features": ["Auto Farm", "Auto Sell", "Instant Shop"]
 }
