@@ -1537,30 +1537,39 @@ local SellSettings = {
 	_scheduledSell = nil
 }
 
-
 -- Locals
 local tweenInProgress
 
 -- ==================== HELPERS ====================
 
 local function equipPan()
-	-- desync prevention (?), idk what they call it
 	local Players = game:GetService("Players")
+	local ReplicatedStorage = game:GetService("ReplicatedStorage")
 	local LocalPlayer = Players.LocalPlayer
 	local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-	for _, v in ipairs(Character:GetChildren()) do
-		if v:GetAttribute("ItemType") == "Pan" then
-			return v
+
+	-- helper to check container for a Pan
+	local function findPan(container)
+		for _, v in ipairs(container:GetChildren()) do
+			if v:GetAttribute("ItemType") == "Pan" then
+				return v
+			end
 		end
 	end
-	for _, v in ipairs(LocalPlayer.Backpack:GetChildren()) do
-		if v:GetAttribute("ItemType") == "Pan" then
-			v.Parent = Character
-			return v
-		end
+
+	local pan = findPan(Character)
+		or findPan(LocalPlayer.Backpack)
+		or findPan(LocalPlayer:WaitForChild("BackpackTwo"))
+
+	if pan then
+		ReplicatedStorage.Remotes.CustomBackpack.EquipRemote:FireServer(pan)
+		return pan
 	end
+
 	return nil
 end
+
+
 
 local function validateSellValue(str)
 	if not str or str == "" then

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.2-alpha] - 2025-09-03
+## Fixed
+- Forgot to push the changes in the previous commit
+
 ## [0.1.1-alpha] - 2025-09-03
 ### Fixed
 - Auto farm exiting early due to `walkToTarget`.
