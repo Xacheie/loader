@@ -14,6 +14,13 @@ The hub currently supports the following Roblox games:
 
 ---
 
+## Supported Game Info
+
+For detailed information about each supported game, including features, changelogs, and development roadmaps, check the individual files for each game script.
+
+
+---
+
 ## Installation
 
 loader URL:

@@ -1336,6 +1336,10 @@ local function createTextBox(name, placeholder, defaultText, callback, parentFra
 		TextXAlignment = Enum.TextXAlignment.Left,
 		ClearTextOnFocus = false,
 		ZIndex = 5,
+		TextWrapped = false,
+        TextScaled = false,
+        TextTruncate = Enum.TextTruncate.AtEnd,
+        ClipsDescendants = true,
 		Parent = parentFrame or contentFrame
 	})
 	createElement("UIStroke", {
@@ -1479,21 +1483,25 @@ end
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local PathfindingService = game:GetService("PathfindingService")
+local TeleportService = game:GetService("TeleportService")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local HttpService = game:GetService("HttpService")
 
 -- Player
 local Player = Players.LocalPlayer
 local LocalPlayer = Players.LocalPlayer
 local PlayerStats = Player:WaitForChild("Stats")
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-local Camera = workspace.CurrentCamera
+local Camera = Workspace.CurrentCamera
 local HumanoidRootPart = Character:WaitForChild("HumanoidRootPart")
 local Humanoid = Character:WaitForChild("Humanoid")
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Workspace
+-- Others
 local NPCs = Workspace:WaitForChild("NPCs")
+local PlaceId = game.PlaceId
+local JobId = game.JobId
 
 -- Animations
 local Animator = Humanoid:WaitForChild("Animator")
@@ -1511,6 +1519,7 @@ local sellSection = createSection(contentFrame, "Sell Inventory", 1, true)
 local autoFarmSection = createSection(contentFrame, "Auto Farm", 2, true)
 local manualSection = createSection(contentFrame, "Manual Actions", 3, false)
 local shopSection = createSection(contentFrame, "Shop", 4, false)
+local serverSection = createSection(contentFrame, "Server", 5, false)
 
 -- ==================== STATE ====================
 local PanStatus = {
@@ -1536,9 +1545,6 @@ local SellSettings = {
 	_lastSell = nil,
 	_scheduledSell = nil
 }
-
--- Locals
-local tweenInProgress
 
 -- ==================== HELPERS ====================
 
@@ -1568,8 +1574,6 @@ local function equipPan()
 
 	return nil
 end
-
-
 
 local function validateSellValue(str)
 	if not str or str == "" then
@@ -3962,6 +3966,11 @@ local function handlePurchase(itemType, selectedOption)
 	end
 end
 
+local function validateString(value)
+	return type(value) == "string" and value:gsub("%s+", "") ~= ""
+end
+
+
 createDropdown("SellModeDropdown", "Sell Mode", {
 	"Walk",
 	"Tween"
@@ -4173,7 +4182,7 @@ createToggleButton("AutoFarmToggle", "Auto Farm", false, function(state)
 					TaskManager:setNextTask(nextTask)
 					TaskManager:setCurrentTask(taskName)
 					if moveToLocation(targetCFrame, locationName) then
-						task.wait(1)
+						task.wait(0.100)
 						if doAction(actionType, expectedRegion) then
 							TaskManager:setCurrentTask("AutoFarm")
 							return true
@@ -4252,7 +4261,7 @@ createToggleButton("AutoFarmToggle", "Auto Farm", false, function(state)
 						task.wait(3)
 					end
 					if AutoFarmState.active then
-						task.wait(1)
+						task.wait(0.1)
 					end
 				end
 				TaskManager:finishTask("AutoFarm")
@@ -4386,3 +4395,117 @@ end, shopSection)
 createButton("BuyOthersDropdownButton", "Buy Others [IF ANY]", function()
 	handlePurchase("others", selectedOptions.other)
 end, shopSection)
+
+createToggleButton("AntiAFKButton", "Anti-AFK", true, function(state)
+	local Players = game:GetService("Players")
+	local LocalPlayer = Players.LocalPlayer
+	local GC = getconnections or get_signal_cons
+
+	if state then
+		-- Try the cleanest method first: disconnect idle detection
+		if GC then
+			for _, v in pairs(GC(LocalPlayer.Idled)) do
+				if v.Disable then
+					v.Disable(v)
+				elseif v.Disconnect then
+					v.Disconnect(v)
+				end
+			end
+			print("Anti-AFK Enabled (disconnected idle events)")
+		else
+			-- Fallback: simulate input
+			local VirtualUser = cloneref and cloneref(game:GetService("VirtualUser")) or game:GetService("VirtualUser")
+			getgenv().AntiAFKConnection = LocalPlayer.Idled:Connect(function()
+				VirtualUser:CaptureController()
+				VirtualUser:ClickButton2(Vector2.new())
+			end)
+			print("Anti-AFK Enabled (VirtualUser fallback)")
+		end
+	else
+		-- Disable Anti-AFK
+		if getgenv().AntiAFKConnection then
+			getgenv().AntiAFKConnection:Disconnect()
+			getgenv().AntiAFKConnection = nil
+		end
+		print("Anti-AFK Disabled")
+	end
+end, serverSection)
+
+createButton("RejoinServerButton", "Rejoin Server", function()
+	if #Players:GetPlayers() <= 1 then
+		LocalPlayer:Kick("\nRejoining...")
+		task.wait()
+		TeleportService:Teleport(PlaceId, LocalPlayer)
+	else
+		TeleportService:TeleportToPlaceInstance(PlaceId, JobId, LocalPlayer)
+	end
+end, serverSection)
+
+createButton("ServerHopButton", "Server Hop", function()
+	local servers = {}
+	local req = game:HttpGet("https://games.roblox.com/v1/games/" ..
+		PlaceId .. "/servers/Public?sortOrder=Desc&limit=100&excludeFullGames=true")
+	local body = HttpService:JSONDecode(req)
+	if body and body.data then
+		for _, v in next, body.data do
+			if type(v) == "table" and tonumber(v.playing) and tonumber(v.maxPlayers) and v.playing < v.maxPlayers and v.id ~= JobId then
+				table.insert(servers, 1, v.id)
+			end
+		end
+	end
+	if #servers > 0 then
+		TeleportService:TeleportToPlaceInstance(PlaceId, servers[math.random(1, #servers)], LocalPlayer)
+	end
+
+	createNotification("Couldn't fetch servers to hop", 5)
+end, serverSection)
+
+createButton("CopyJobIdButton", "Copy JobId", function()
+	local currentJobId = game.JobId
+
+	if not validateString(currentJobId) then
+		createNotification("No Job ID available", 5)
+		return
+	end
+
+	local success, result = pcall(function()
+		setclipboard(currentJobId)
+		return true
+	end)
+
+	if success then
+		createNotification("JobId copied!")
+		return result
+	else
+		createNotification("Couldn't copy job id.")
+	end
+end, serverSection)
+
+local JobIdInput = nil
+
+createTextBox("JoinByJobIdTextBox", "Enter JobId ...", nil, function(input)
+	if validateString(input) then
+		JobIdInput = input
+		createNotification("Valid JobId entered: " .. JobIdInput)
+	else
+		createNotification("Invalid input: Please enter a valid JobId (non-empty string)")
+		JobIdInput = nil
+	end
+end, serverSection)
+
+createButton("JoinByJobIdTextButton", "Join by JobId", function()
+	if not validateString(JobIdInput) then
+		createNotification("Invalid Job ID provided")
+	end
+
+	createNotification("Joining specified server...")
+
+	local function teleportOperation()
+		local teleportOptions = Instance.new("TeleportOptions")
+		teleportOptions.ServerInstanceId = JobIdInput
+		TeleportService:Teleport(game.PlaceId, LocalPlayer, teleportOptions)
+		return true
+	end
+
+	teleportOperation()
+end, serverSection)
