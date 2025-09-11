@@ -1,8 +1,16 @@
 {
   "name": "Prospecting!",
-  "version": "0.2.1-alpha",
+  "version": "1.0.1-alpha",
   "description": "Automates various tasks in the game Prospecting!",
-  "author": "Xacheie",
-  "last_updated": "2025-09-04",
-  "features": ["Auto Farm", "Auto Sell", "Instant Shop"]
+  "author": "DawnPetal",
+  "last_updated": "2025-09-11",
+  "features": [
+    "Auto Farm",
+    "Auto Sell",
+    "Instant Shop"
+  ],
+  "prerequisites": {
+    "TaskManager": "utils/TaskManager.lua",
+    "InputSimulator": "utils/InputSimulator.lua"
+  }
 }
